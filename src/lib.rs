@@ -97,11 +97,10 @@ impl<'a> Decode<'a> for ModifiedUtf8<'a> {
 impl Debug for ModifiedUtf8<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "\"")?;
-        for &b in self.0 {
-            if b.is_ascii() {
-                write!(f, "{}", b as char)?;
-            } else {
-                write!(f, "·")?;
+        for chunk in self.0.utf8_chunks() {
+            write!(f, "{}", chunk.valid())?;
+            for _ in 0..chunk.invalid().len() {
+                write!(f, "\u{FFFD}")?;
             }
         }
         write!(f, "\"")
