@@ -10,7 +10,7 @@ fn main() {
     // let input = std::fs::read("./Keyframe.class").unwrap();
     let mut input = Vec::new();
     stdin().read_to_end(&mut input).unwrap();
-    let reader = Reader::new(&input);
+    let reader = Reader::new(&*input);
     let (header, mut reader) = reader.header().unwrap();
     dbg!(header);
     while let Some((idx, entry)) = reader.next().transpose().unwrap() {

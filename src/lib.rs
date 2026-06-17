@@ -2,7 +2,12 @@
 
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 mod util;
+
+pub use util::{SealedBuf as Buf, SealedBufMut as BufMut};
 
 mod attribute;
 mod constant;
@@ -13,8 +18,6 @@ mod method;
 
 use core::fmt::{Debug, Display};
 
-use crate::util::{Buf, Decode, Encode};
-
 pub use attribute::Attribute;
 pub use constant::{ConstantEntry, ReferenceKind};
 pub use field::{FieldAccessFlags, FieldHeader};
@@ -23,8 +26,10 @@ pub use meta::{ClassAccessFlags, ClassMetadata};
 pub use method::{MethodAccessFlags, MethodHeader};
 
 mod reader;
+mod writer;
 
 pub use reader::*;
+pub use writer::*;
 
 /// Errors that occur during reading or writing a classfile.
 #[derive(Debug, Clone)]
@@ -43,6 +48,8 @@ pub enum Error {
     UnknownConstantTag(u8),
     /// Unknown access flags found during parsing.
     UnknownAccessFlags(u16),
+    /// Index out of bounds.
+    OutOfBounds,
 }
 
 impl Display for Error {
@@ -59,6 +66,7 @@ impl Display for Error {
             Error::UnknownReferenceKind(kind) => write!(f, "unknown reference kind: {kind}"),
             Error::UnknownConstantTag(tag) => write!(f, "unknown constant pool entry tag: {tag}"),
             Error::UnknownAccessFlags(flags) => write!(f, "unknown access flags included: {flags}"),
+            Error::OutOfBounds => write!(f, "index out of bounds"),
         }
     }
 }
@@ -70,7 +78,7 @@ impl Display for Error {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModifiedUtf8<'a>(pub &'a [u8]);
 
-impl Encode for ModifiedUtf8<'_> {
+impl util::Encode for ModifiedUtf8<'_> {
     fn encode<B: util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
         assert!(
             self.0.len() <= u16::MAX as usize,
@@ -85,8 +93,8 @@ impl Encode for ModifiedUtf8<'_> {
     }
 }
 
-impl<'a> Decode<'a> for ModifiedUtf8<'a> {
-    fn decode<B: Buf<'a>>(mut buf: B) -> Result<Self, Error> {
+impl<'a> util::Decode<'a> for ModifiedUtf8<'a> {
+    fn decode<B: util::Buf<'a>>(mut buf: B) -> Result<Self, Error> {
         let len: u16 = buf.read()?;
         buf.read_slice(len as usize)
             .map(Self)

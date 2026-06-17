@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 bitflags = { version = "2.13", default-features = false }
 
+[features]
+default = ["alloc"]
+alloc = []
+
 [lints]
 workspace = true
 

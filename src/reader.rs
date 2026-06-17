@@ -1,10 +1,10 @@
 //! Reading a classfile.
 
-use core::num::NonZero;
+use core::{marker::PhantomData, num::NonZero};
 
 use crate::{
     Attribute, ClassMetadata, ClassfileHeader, ConstantEntry, Error, FieldHeader, MethodHeader,
-    reader::phases::RawList, util::Buf as _,
+    reader::phases::RawList,
 };
 
 mod phases {
@@ -73,39 +73,58 @@ mod phases {
 /// Reader of a classfile.
 #[derive(Debug)]
 #[must_use]
-pub struct Reader<'a, Phase> {
-    haystack: &'a [u8],
+pub struct Reader<'a, R, Phase> {
+    haystack: R,
     phase: Phase,
+    _ghost: PhantomData<&'a ()>,
 }
 
-impl<'a, Phase> Reader<'a, Phase> {
+impl<'a, R, Phase> Reader<'a, R, Phase> {
     #[inline]
-    fn transform<T>(self, phase: T) -> Reader<'a, T> {
+    fn transform<T>(self, phase: T) -> Reader<'a, R, T> {
         Reader {
             haystack: self.haystack,
             phase,
+            _ghost: PhantomData,
+        }
+    }
+
+    /// Peeks at the internal haystack.
+    #[inline]
+    pub fn haystack(&self) -> &R {
+        &self.haystack
+    }
+}
+
+impl<R> Reader<'_, R, phases::Header> {
+    /// Creates a new classfile reader from given raw bytecode.
+    pub const fn new(src: R) -> Self {
+        Self {
+            haystack: src,
+            phase: phases::Header,
+            _ghost: PhantomData,
         }
     }
 }
 
-impl<'a> Reader<'a, phases::Header> {
-    /// Creates a new classfile reader from given raw bytecode.
-    pub const fn new(src: &'a [u8]) -> Self {
-        Self {
-            haystack: src,
-            phase: phases::Header,
-        }
-    }
-
+impl<'a, R> Reader<'a, R, phases::Header>
+where
+    R: crate::Buf<'a>,
+{
     /// Reads the header of the classfile.
-    pub fn header(mut self) -> Result<(ClassfileHeader, Reader<'a, phases::ConstantPool>), Error> {
+    pub fn header(
+        mut self,
+    ) -> Result<(ClassfileHeader, Reader<'a, R, phases::ConstantPool>), Error> {
         let header = self.haystack.read()?;
         let phase = self.haystack.read()?;
         Ok((header, self.transform(phase)))
     }
 }
 
-impl<'a> Iterator for Reader<'a, phases::ConstantPool> {
+impl<'a, R> Iterator for Reader<'a, R, phases::ConstantPool>
+where
+    R: crate::Buf<'a>,
+{
     /// Index and entry.
     /// The indices of constant pool is fundamentally dumb so it's provided here.
     type Item = Result<(NonZero<u16>, ConstantEntry<'a>), Error>;
@@ -133,25 +152,34 @@ impl<'a> Iterator for Reader<'a, phases::ConstantPool> {
     }
 }
 
-impl<'a> Reader<'a, phases::ConstantPool> {
+impl<'a, R> Reader<'a, R, phases::ConstantPool>
+where
+    R: crate::Buf<'a>,
+{
     /// Finishes the constant pool phase.
     /// Unread entries will be walked over.
-    pub fn finish(mut self) -> Result<Reader<'a, phases::Metadata>, Error> {
+    pub fn finish(mut self) -> Result<Reader<'a, R, phases::Metadata>, Error> {
         while self.next().transpose()?.is_some() {}
         Ok(self.transform(phases::Metadata))
     }
 }
 
-impl<'a> Reader<'a, phases::Metadata> {
+impl<'a, R> Reader<'a, R, phases::Metadata>
+where
+    R: crate::Buf<'a>,
+{
     /// Reads class metadata of this classfile.
-    pub fn metadata(mut self) -> Result<(ClassMetadata, Reader<'a, phases::Interfaces>), Error> {
+    pub fn metadata(mut self) -> Result<(ClassMetadata, Reader<'a, R, phases::Interfaces>), Error> {
         let meta = self.haystack.read()?;
         let list = self.haystack.read()?;
         Ok((meta, self.transform(phases::Interfaces(list))))
     }
 }
 
-impl Iterator for Reader<'_, phases::Interfaces> {
+impl<'a, R> Iterator for Reader<'a, R, phases::Interfaces>
+where
+    R: crate::Buf<'a>,
+{
     /// The constant pool entry of this interface (`Class`).
     type Item = Result<NonZero<u16>, Error>;
 
@@ -167,12 +195,15 @@ impl Iterator for Reader<'_, phases::Interfaces> {
     }
 }
 
-impl ExactSizeIterator for Reader<'_, phases::Interfaces> {}
+impl<'a, R> ExactSizeIterator for Reader<'a, R, phases::Interfaces> where R: crate::Buf<'a> {}
 
-impl<'a> Reader<'a, phases::Interfaces> {
+impl<'a, R> Reader<'a, R, phases::Interfaces>
+where
+    R: crate::Buf<'a>,
+{
     /// Finishes the interfaces phase.
     /// Unread entries will be walked over.
-    pub fn finish(mut self) -> Result<Reader<'a, phases::Fields>, Error> {
+    pub fn finish(mut self) -> Result<Reader<'a, R, phases::Fields>, Error> {
         while self.next().transpose()?.is_some() {}
         let list = self.haystack.read()?;
         Ok(self.transform(phases::Fields(list)))
@@ -181,13 +212,20 @@ impl<'a> Reader<'a, phases::Interfaces> {
 
 /// Reader of a field.
 #[derive(Debug)]
-pub struct FieldReader<'a, 'env> {
+pub struct FieldReader<'a, 'env, R>
+where
+    R: crate::Buf<'a>,
+{
     header: FieldHeader,
-    haystack: &'env mut &'a [u8],
+    haystack: &'env mut R,
     attrs: RawList,
+    _ghost: PhantomData<&'a ()>,
 }
 
-impl FieldReader<'_, '_> {
+impl<'a, R> FieldReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     /// Returns the header of this field.
     #[inline]
     pub fn header(&self) -> &FieldHeader {
@@ -201,7 +239,10 @@ impl FieldReader<'_, '_> {
     }
 }
 
-impl<'a> Iterator for FieldReader<'a, '_> {
+impl<'a, R> Iterator for FieldReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     type Item = Result<Attribute<'a>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -216,9 +257,12 @@ impl<'a> Iterator for FieldReader<'a, '_> {
     }
 }
 
-impl ExactSizeIterator for FieldReader<'_, '_> {}
+impl<'a, R> ExactSizeIterator for FieldReader<'a, '_, R> where R: crate::Buf<'a> {}
 
-impl Drop for FieldReader<'_, '_> {
+impl<'a, R> Drop for FieldReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     fn drop(&mut self) {
         self.fold((), |_, err| {
             let _ = err.expect("error occurred when skipping fields");
@@ -226,36 +270,48 @@ impl Drop for FieldReader<'_, '_> {
     }
 }
 
-impl<'a> Reader<'a, phases::Fields> {
+impl<'a, R> Reader<'a, R, phases::Fields>
+where
+    R: crate::Buf<'a>,
+{
     /// Pulls for next field.
-    pub fn next<'env>(&'env mut self) -> Option<Result<FieldReader<'a, 'env>, Error>> {
+    pub fn next<'env>(&'env mut self) -> Option<Result<FieldReader<'a, 'env, R>, Error>> {
         (self.phase.0.len > self.phase.0.read).then(|| {
             self.phase.0.read += 1;
             Ok(FieldReader {
                 header: self.haystack.read()?,
                 attrs: self.haystack.read()?,
                 haystack: &mut self.haystack,
+                _ghost: PhantomData,
             })
         })
     }
 
     /// Finishes the fields phase.
     /// Unread entries will be walked over.
-    pub fn finish(mut self) -> Result<Reader<'a, phases::Methods>, Error> {
+    pub fn finish(mut self) -> Result<Reader<'a, R, phases::Methods>, Error> {
         while self.next().transpose()?.is_some() {}
         let list = self.haystack.read()?;
         Ok(self.transform(phases::Methods(list)))
     }
 }
+
 /// Reader of a method.
 #[derive(Debug)]
-pub struct MethodReader<'a, 'env> {
+pub struct MethodReader<'a, 'env, R>
+where
+    R: crate::Buf<'a>,
+{
     header: MethodHeader,
-    haystack: &'env mut &'a [u8],
+    haystack: &'env mut R,
     attrs: RawList,
+    _ghost: PhantomData<&'a ()>,
 }
 
-impl MethodReader<'_, '_> {
+impl<'a, R> MethodReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     /// Returns the header of this method.
     #[inline]
     pub fn header(&self) -> &MethodHeader {
@@ -269,7 +325,10 @@ impl MethodReader<'_, '_> {
     }
 }
 
-impl<'a> Iterator for MethodReader<'a, '_> {
+impl<'a, R> Iterator for MethodReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     type Item = Result<Attribute<'a>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -284,9 +343,12 @@ impl<'a> Iterator for MethodReader<'a, '_> {
     }
 }
 
-impl ExactSizeIterator for MethodReader<'_, '_> {}
+impl<'a, R> ExactSizeIterator for MethodReader<'a, '_, R> where R: crate::Buf<'a> {}
 
-impl Drop for MethodReader<'_, '_> {
+impl<'a, R> Drop for MethodReader<'a, '_, R>
+where
+    R: crate::Buf<'a>,
+{
     fn drop(&mut self) {
         self.fold((), |_, err| {
             let _ = err.expect("error occurred when skipping methods");
@@ -294,29 +356,36 @@ impl Drop for MethodReader<'_, '_> {
     }
 }
 
-impl<'a> Reader<'a, phases::Methods> {
+impl<'a, R> Reader<'a, R, phases::Methods>
+where
+    R: crate::Buf<'a>,
+{
     /// Pulls for next method.
-    pub fn next<'env>(&'env mut self) -> Option<Result<MethodReader<'a, 'env>, Error>> {
+    pub fn next<'env>(&'env mut self) -> Option<Result<MethodReader<'a, 'env, R>, Error>> {
         (self.phase.0.len > self.phase.0.read).then(|| {
             self.phase.0.read += 1;
             Ok(MethodReader {
                 header: self.haystack.read()?,
                 attrs: self.haystack.read()?,
                 haystack: &mut self.haystack,
+                _ghost: PhantomData,
             })
         })
     }
 
     /// Finishes the methods phase.
     /// Unread entries will be walked over.
-    pub fn finish(mut self) -> Result<Reader<'a, phases::Attributes>, Error> {
+    pub fn finish(mut self) -> Result<Reader<'a, R, phases::Attributes>, Error> {
         while self.next().transpose()?.is_some() {}
         let list = self.haystack.read()?;
         Ok(self.transform(phases::Attributes(list)))
     }
 }
 
-impl<'a> Iterator for Reader<'a, phases::Attributes> {
+impl<'a, R> Iterator for Reader<'a, R, phases::Attributes>
+where
+    R: crate::Buf<'a>,
+{
     /// The constant pool entry of this interface (`Class`).
     type Item = Result<Attribute<'a>, Error>;
 
@@ -332,4 +401,4 @@ impl<'a> Iterator for Reader<'a, phases::Attributes> {
     }
 }
 
-impl ExactSizeIterator for Reader<'_, phases::Attributes> {}
+impl<'a, R> ExactSizeIterator for Reader<'a, R, phases::Attributes> where R: crate::Buf<'a> {}

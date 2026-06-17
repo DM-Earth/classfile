@@ -272,7 +272,7 @@ impl Encode for ConstantEntry<'_> {
                 bootstrap_method_attr_index,
                 name_and_type_index,
             } => {
-                buf.write(17u8)?;
+                buf.write(18u8)?;
                 buf.write(bootstrap_method_attr_index)?;
                 buf.write(name_and_type_index)?;
             }
@@ -281,7 +281,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(idx)?;
             }
             ConstantEntry::Package(idx) => {
-                buf.write(19u8)?;
+                buf.write(20u8)?;
                 buf.write(idx)?;
             }
         }

@@ -33,7 +33,7 @@ impl Encode for Attribute<'_> {
             "length of string literal should be smaller than u32::MAX"
         );
         buf.write(self.name_index)?;
-        buf.write(self.info.len() as u16)?;
+        buf.write(self.info.len() as u32)?;
         if buf.write_from_slice(self.info) != self.info.len() {
             return Err(Error::UnexpectedEOF);
         }
@@ -45,7 +45,6 @@ impl Debug for Attribute<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Attribute")
             .field("name_index", &self.name_index)
-            .field("info_len", &self.info.len())
             .finish_non_exhaustive()
     }
 }
