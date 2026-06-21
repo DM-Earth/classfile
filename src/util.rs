@@ -243,7 +243,7 @@ impl BufMut for alloc::vec::Vec<u8> {
         } else if self.len() >= chunk.idx + chunk.len {
             f(&mut self[chunk.idx..chunk.idx + chunk.len])
         } else {
-            Err(Error::OutOfBounds)
+            Err(Error::IndexOfBounds)
         }
     }
 }
@@ -265,6 +265,25 @@ macro_rules! edcode_primitive {
             fn encode<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
                 buf.write_bytes(self.to_be_bytes())
                     .ok_or(Error::UnexpectedEOF)
+            }
+        }
+
+        impl<'de> Decode<'de> for core::ops::Range<$t> {
+            #[inline]
+            fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+                Ok(Self {
+                    start: buf.read()?,
+                    end: buf.read()?,
+                })
+            }
+        }
+
+        impl Encode for core::ops::Range<$t> {
+            #[inline]
+            fn encode<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
+                buf.write(self.start)?;
+                buf.write(self.end)?;
+                Ok(())
             }
         }
         )*
@@ -314,6 +333,24 @@ macro_rules! edcode_nonzero_primitive {
 edcode_nonzero_primitive! {
     u8, u16, u32, u64, u128, usize,
     i8, i16, i32, i64, i128, isize,
+}
+
+impl<'de> Decode<'de> for &'de [u8] {
+    fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+        let len: u32 = buf.read()?;
+        buf.read_slice(len as usize).ok_or(Error::UnexpectedEOF)
+    }
+}
+
+impl Encode for [u8] {
+    fn encode<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
+        buf.write(self.len() as u32)?;
+        if buf.write_from_slice(self) == self.len() {
+            Ok(())
+        } else {
+            Err(Error::UnexpectedEOF)
+        }
+    }
 }
 
 /// Reading buffer.

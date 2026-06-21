@@ -11,7 +11,7 @@ use crate::{
 /// An entry in the constant pool.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 #[allow(clippy::exhaustive_enums)]
-pub enum ConstantEntry<'a> {
+pub enum ConstantPoolEntry<'a> {
     /// String literal.
     Utf8(ModifiedUtf8<'a>),
 
@@ -97,7 +97,7 @@ pub enum ConstantEntry<'a> {
     Package(NonZero<u16>),
 }
 
-impl ConstantEntry<'_> {
+impl ConstantPoolEntry<'_> {
     /// The amount of index space this entry takes.
     ///
     /// If the index of this entry is `i` and it took `n` space then
@@ -138,7 +138,7 @@ pub enum ReferenceKind {
     InvokeInterface,
 }
 
-impl<'de> Decode<'de> for ConstantEntry<'de> {
+impl<'de> Decode<'de> for ConstantPoolEntry<'de> {
     fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
         let tag: u8 = buf.read()?;
         match tag {
@@ -185,38 +185,38 @@ impl<'de> Decode<'de> for ConstantEntry<'de> {
     }
 }
 
-impl Encode for ConstantEntry<'_> {
+impl Encode for ConstantPoolEntry<'_> {
     fn encode<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
         match self {
-            ConstantEntry::Utf8(slice) => {
+            ConstantPoolEntry::Utf8(slice) => {
                 buf.write(1u8)?;
                 buf.write(slice)?;
             }
-            ConstantEntry::Integer(val) => {
+            ConstantPoolEntry::Integer(val) => {
                 buf.write(3u8)?;
                 buf.write(val)?;
             }
-            ConstantEntry::Float(val) => {
+            ConstantPoolEntry::Float(val) => {
                 buf.write(4u8)?;
                 buf.write(val)?;
             }
-            ConstantEntry::Long(val) => {
+            ConstantPoolEntry::Long(val) => {
                 buf.write(5u8)?;
                 buf.write(val)?;
             }
-            ConstantEntry::Double(val) => {
+            ConstantPoolEntry::Double(val) => {
                 buf.write(6u8)?;
                 buf.write(val)?;
             }
-            ConstantEntry::Class(idx) => {
+            ConstantPoolEntry::Class(idx) => {
                 buf.write(7u8)?;
                 buf.write(idx)?;
             }
-            ConstantEntry::String(idx) => {
+            ConstantPoolEntry::String(idx) => {
                 buf.write(8u8)?;
                 buf.write(idx)?;
             }
-            ConstantEntry::FieldRef {
+            ConstantPoolEntry::FieldRef {
                 class_index,
                 name_and_type_index,
             } => {
@@ -224,7 +224,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(class_index)?;
                 buf.write(name_and_type_index)?;
             }
-            ConstantEntry::MethodRef {
+            ConstantPoolEntry::MethodRef {
                 class_index,
                 name_and_type_index,
             } => {
@@ -232,7 +232,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(class_index)?;
                 buf.write(name_and_type_index)?;
             }
-            ConstantEntry::InterfaceMethodRef {
+            ConstantPoolEntry::InterfaceMethodRef {
                 class_index,
                 name_and_type_index,
             } => {
@@ -240,7 +240,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(class_index)?;
                 buf.write(name_and_type_index)?;
             }
-            ConstantEntry::NameAndType {
+            ConstantPoolEntry::NameAndType {
                 name_index,
                 descriptor_index,
             } => {
@@ -248,7 +248,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(name_index)?;
                 buf.write(descriptor_index)?;
             }
-            ConstantEntry::MethodHandle {
+            ConstantPoolEntry::MethodHandle {
                 ref_kind,
                 ref_index,
             } => {
@@ -256,11 +256,11 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(ref_kind)?;
                 buf.write(ref_index)?;
             }
-            ConstantEntry::MethodType(idx) => {
+            ConstantPoolEntry::MethodType(idx) => {
                 buf.write(16u8)?;
                 buf.write(idx)?;
             }
-            ConstantEntry::Dynamic {
+            ConstantPoolEntry::Dynamic {
                 bootstrap_method_attr_index,
                 name_and_type_index,
             } => {
@@ -268,7 +268,7 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(bootstrap_method_attr_index)?;
                 buf.write(name_and_type_index)?;
             }
-            ConstantEntry::InvokeDynamic {
+            ConstantPoolEntry::InvokeDynamic {
                 bootstrap_method_attr_index,
                 name_and_type_index,
             } => {
@@ -276,11 +276,11 @@ impl Encode for ConstantEntry<'_> {
                 buf.write(bootstrap_method_attr_index)?;
                 buf.write(name_and_type_index)?;
             }
-            ConstantEntry::Module(idx) => {
+            ConstantPoolEntry::Module(idx) => {
                 buf.write(19u8)?;
                 buf.write(idx)?;
             }
-            ConstantEntry::Package(idx) => {
+            ConstantPoolEntry::Package(idx) => {
                 buf.write(20u8)?;
                 buf.write(idx)?;
             }

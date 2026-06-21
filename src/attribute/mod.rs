@@ -5,6 +5,13 @@ use crate::{
     util::{Buf, BufMut, Decode, Encode},
 };
 
+mod vals;
+
+/// Parser and writer implementation for a subset of attributes.
+pub mod attributes {
+    pub use super::vals::*;
+}
+
 /// An attribute.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Attribute<'a> {
@@ -17,11 +24,9 @@ pub struct Attribute<'a> {
 
 impl<'de> Decode<'de> for Attribute<'de> {
     fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
-        let name_index = buf.read()?;
-        let len: u32 = buf.read()?;
         Ok(Self {
-            name_index,
-            info: buf.read_slice(len as usize).ok_or(Error::UnexpectedEOF)?,
+            name_index: buf.read()?,
+            info: buf.read()?,
         })
     }
 }
@@ -33,10 +38,7 @@ impl Encode for Attribute<'_> {
             "length of string literal should be smaller than u32::MAX"
         );
         buf.write(self.name_index)?;
-        buf.write(self.info.len() as u32)?;
-        if buf.write_from_slice(self.info) != self.info.len() {
-            return Err(Error::UnexpectedEOF);
-        }
+        buf.write(self.info)?;
         Ok(())
     }
 }

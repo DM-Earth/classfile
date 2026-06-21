@@ -3,11 +3,11 @@
 use core::{marker::PhantomData, num::NonZero};
 
 use crate::{
-    Attribute, ClassMetadata, ClassfileHeader, ConstantEntry, Error, FieldHeader, MethodHeader,
+    Attribute, ClassMetadata, ClassfileHeader, ConstantPoolEntry, Error, FieldHeader, MethodHeader,
     reader::phases::RawList,
 };
 
-mod phases {
+pub(crate) mod phases {
     use core::num::NonZero;
 
     use crate::{
@@ -32,6 +32,9 @@ mod phases {
     pub struct Header;
 
     #[derive(Debug)]
+    pub struct Body;
+
+    #[derive(Debug)]
     pub struct ConstantPool {
         pub(crate) len: NonZero<u16>,
         pub(crate) read: NonZero<u16>,
@@ -49,6 +52,8 @@ mod phases {
     pub struct Methods(pub(crate) RawList);
     #[derive(Debug)]
     pub struct Attributes(pub(crate) RawList);
+    #[derive(Debug)]
+    pub struct ExceptionTable(pub(crate) RawList);
 
     impl<'de> Decode<'de> for RawList {
         fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
@@ -127,12 +132,12 @@ where
 {
     /// Index and entry.
     /// The indices of constant pool is fundamentally dumb so it's provided here.
-    type Item = Result<(NonZero<u16>, ConstantEntry<'a>), Error>;
+    type Item = Result<(NonZero<u16>, ConstantPoolEntry<'a>), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.phase.len > self.phase.read {
             let idx = self.phase.idx;
-            let entry: ConstantEntry<'a> = match self.haystack.read() {
+            let entry: ConstantPoolEntry<'a> = match self.haystack.read() {
                 Ok(entry) => entry,
                 Err(err) => return Some(Err(err)),
             };

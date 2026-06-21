@@ -68,7 +68,7 @@ impl Encode for FieldHeader {
 impl<'de> Decode<'de> for FieldAccessFlags {
     fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
         let bits = buf.read()?;
-        Self::from_bits(bits).ok_or(Error::UnknownAccessFlags(bits))
+        Ok(Self::from_bits_retain(bits))
     }
 }
 

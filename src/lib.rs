@@ -18,8 +18,8 @@ mod method;
 
 use core::fmt::{Debug, Display};
 
-pub use attribute::Attribute;
-pub use constant::{ConstantEntry, ReferenceKind};
+pub use attribute::{Attribute, attributes};
+pub use constant::{ConstantPoolEntry, ReferenceKind};
 pub use field::{FieldAccessFlags, FieldHeader};
 pub use header::{ClassfileHeader, Version};
 pub use meta::{ClassAccessFlags, ClassMetadata};
@@ -46,10 +46,16 @@ pub enum Error {
     UnknownReferenceKind(u8),
     /// Unknown constant pool entry tag found during parsing.
     UnknownConstantTag(u8),
-    /// Unknown access flags found during parsing.
-    UnknownAccessFlags(u16),
+    /// Unknown verification type tag found during parsing.
+    UnknownVerificationType(u8),
+    /// Unknown frame type tag found during parsing.
+    UnknownFrameType(u8),
+    /// Unknown element value tag found during parsing.
+    UnknownElementValueType(u8),
     /// Index out of bounds.
-    OutOfBounds,
+    IndexOfBounds,
+    /// Offset out of bounds.
+    OffsetOutOfBounds,
 }
 
 impl Display for Error {
@@ -65,8 +71,13 @@ impl Display for Error {
             ),
             Error::UnknownReferenceKind(kind) => write!(f, "unknown reference kind: {kind}"),
             Error::UnknownConstantTag(tag) => write!(f, "unknown constant pool entry tag: {tag}"),
-            Error::UnknownAccessFlags(flags) => write!(f, "unknown access flags included: {flags}"),
-            Error::OutOfBounds => write!(f, "index out of bounds"),
+            Error::UnknownFrameType(tag) => write!(f, "unknown frame type: {tag}"),
+            Error::UnknownElementValueType(tag) => write!(f, "unknown element value type: {tag}"),
+            Error::UnknownVerificationType(tag) => {
+                write!(f, "unknown verification type tag: {tag}")
+            }
+            Error::IndexOfBounds => write!(f, "index out of bounds"),
+            Error::OffsetOutOfBounds => write!(f, "offset out of bounds"),
         }
     }
 }

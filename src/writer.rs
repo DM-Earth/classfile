@@ -3,13 +3,16 @@
 use core::num::NonZero;
 
 use crate::{
-    Attribute, ClassMetadata, ClassfileHeader, ConstantEntry, Error, FieldHeader, MethodHeader,
+    Attribute, ClassMetadata, ClassfileHeader, ConstantPoolEntry, Error, FieldHeader, MethodHeader,
     util::BufMut as _,
 };
 
-mod phases {
+pub(crate) mod phases {
     #[derive(Debug)]
     pub struct Header;
+
+    #[derive(Debug)]
+    pub struct Body;
 
     #[derive(Debug)]
     pub struct Attributes<W>
@@ -34,6 +37,15 @@ mod phases {
 
     #[derive(Debug)]
     pub struct Interfaces<W>
+    where
+        W: crate::BufMut,
+    {
+        pub(crate) count: u16,
+        pub(crate) chunk: W::Chunk,
+    }
+
+    #[derive(Debug)]
+    pub struct ExceptionTable<W>
     where
         W: crate::BufMut,
     {
@@ -120,7 +132,7 @@ where
     W: crate::BufMut,
 {
     /// Writes a new constant entry.
-    pub fn push(&mut self, entry: &ConstantEntry<'_>) -> Result<(), Error> {
+    pub fn push(&mut self, entry: &ConstantPoolEntry<'_>) -> Result<(), Error> {
         self.buf.write(entry)?;
         self.phase.count += 1;
         Ok(())
