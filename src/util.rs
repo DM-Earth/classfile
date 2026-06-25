@@ -353,6 +353,38 @@ impl Encode for [u8] {
     }
 }
 
+macro_rules! edcode_tuples {
+    ($($($t:ident),*$(,)?;)*) => {
+        $(
+        impl<$($t: Encode),*> Encode for ($($t,)*) {
+            #[allow(unused_mut, unused_variables, non_snake_case)]
+            fn encode<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
+                let ($($t,)*) = self;
+                $(
+                buf.write($t)?;
+                )*
+                Ok(())
+            }
+        }
+
+        impl<'de, $($t: Decode<'de>),*> Decode<'de> for ($($t,)*) {
+            #[allow(unused_mut, unused_variables, non_snake_case)]
+            fn decode<B: Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+                $(let $t: $t = buf.read()?;)*
+                Ok(($($t,)*))
+            }
+        }
+        )*
+    };
+}
+
+edcode_tuples! {
+    ;
+    T1;
+    T1, T2;
+    T1, T2, T3;
+}
+
 /// Reading buffer.
 pub trait SealedBuf<'de>: Buf<'de> {}
 

@@ -52,6 +52,10 @@ pub enum Error {
     UnknownFrameType(u8),
     /// Unknown element value tag found during parsing.
     UnknownElementValueType(u8),
+    /// Unknown annotation target tag found during parsing.
+    UnknownAnnotationTargetType(u8),
+    /// Unknown type path kind found during parsing.
+    UnknownTypePathKind(u8),
     /// Index out of bounds.
     IndexOfBounds,
     /// Offset out of bounds.
@@ -73,6 +77,10 @@ impl Display for Error {
             Error::UnknownConstantTag(tag) => write!(f, "unknown constant pool entry tag: {tag}"),
             Error::UnknownFrameType(tag) => write!(f, "unknown frame type: {tag}"),
             Error::UnknownElementValueType(tag) => write!(f, "unknown element value type: {tag}"),
+            Error::UnknownAnnotationTargetType(tag) => {
+                write!(f, "unknown annotation target type: {tag}")
+            }
+            Error::UnknownTypePathKind(tag) => write!(f, "unknown type path kind: {tag}"),
             Error::UnknownVerificationType(tag) => {
                 write!(f, "unknown verification type tag: {tag}")
             }

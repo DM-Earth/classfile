@@ -319,119 +319,131 @@ impl Encode for ExceptionTableEntry {
     }
 }
 
-/// Reader of an array.
-#[derive(Debug)]
-pub struct ArrayReader<'a, B, T> {
-    buf: B,
-    list: RawList,
-    _ghost: PhantomData<(&'a (), &'a T)>,
-}
-
-impl<'a, B, T> ArrayReader<'a, B, T>
-where
-    B: Buf<'a>,
-{
-    /// Creates a new reader.
-    pub fn new(mut buf: B) -> Result<Self, Error> {
-        Ok(Self {
-            list: buf.read()?,
-            buf,
-            _ghost: PhantomData,
-        })
-    }
-}
-
-impl<'a, B, T> Iterator for ArrayReader<'a, B, T>
-where
-    B: Buf<'a>,
-    T: Decode<'a>,
-{
-    type Item = Result<T, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        (self.list.len > self.list.read).then(|| {
-            self.list.read += 1;
-            self.buf.read()
-        })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.list.size_hint()
-    }
-}
-
-impl<'a, B, T> ExactSizeIterator for ArrayReader<'a, B, T>
-where
-    B: Buf<'a>,
-    T: Decode<'a>,
-{
-}
-
-/// Writer of an array.
-#[derive(Debug)]
-pub struct ArrayWriter<B, T>
-where
-    B: BufMut,
-{
-    buf: B,
-    chunk: Option<B::Chunk>,
-    count: u16,
-    _ghost: PhantomData<T>,
-}
-
-impl<B, T> ArrayWriter<B, T>
-where
-    B: BufMut,
-{
-    /// Creates a new writer.
-    pub fn new(mut buf: B) -> Result<Self, Error> {
-        let chunk = buf
-            .reserve_chunk(size_of::<u16>())
-            .ok_or(Error::UnexpectedEOF)?;
-        Ok(Self {
-            buf,
-            chunk: Some(chunk),
-            count: 0,
-            _ghost: PhantomData,
-        })
-    }
-}
-
-impl<B, T> ArrayWriter<B, T>
-where
-    B: BufMut,
-    T: Encode,
-{
-    /// Writes a new entry.
-    pub fn push(&mut self, entry: &T) -> Result<(), Error> {
-        self.buf.write(entry)?;
-        self.count += 1;
-        Ok(())
-    }
-}
-
-impl<B, T> ArrayWriter<B, T>
-where
-    B: BufMut,
-{
-    /// Finishes writing the array.
-    #[allow(clippy::missing_panics_doc)]
-    pub fn finish(mut self) -> Result<(), Error> {
-        let chunk = self.chunk.take().unwrap();
-        self.buf.write_chunk(chunk, |mut b| b.write(self.count))
-    }
-}
-
-impl<B, T> Drop for ArrayWriter<B, T>
-where
-    B: BufMut,
-{
-    fn drop(&mut self) {
-        if let Some(chunk) = self.chunk.take() {
-            let _ = self.buf.write_chunk(chunk, |mut b| b.write(self.count));
+macro_rules! array_rw {
+    ($r:ident,$w:ident=>$n:ty) => {
+        /// Reader of an array.
+        #[derive(Debug)]
+        pub struct $r<'a, B, T> {
+            buf: B,
+            list: RawList,
+            _ghost: PhantomData<(&'a (), &'a T)>,
         }
-    }
+
+        impl<'a, B, T> $r<'a, B, T>
+        where
+            B: Buf<'a>,
+        {
+            /// Creates a new reader.
+            pub fn new(mut buf: B) -> Result<Self, Error> {
+                Ok(Self {
+                    list: buf.read()?,
+                    buf,
+                    _ghost: PhantomData,
+                })
+            }
+        }
+
+        impl<'a, B, T> Iterator for $r<'a, B, T>
+        where
+            B: Buf<'a>,
+            T: Decode<'a>,
+        {
+            type Item = Result<T, Error>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                (self.list.len > self.list.read).then(|| {
+                    self.list.read += 1;
+                    self.buf.read()
+                })
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                self.list.size_hint()
+            }
+        }
+
+        impl<'a, B, T> ExactSizeIterator for $r<'a, B, T>
+        where
+            B: Buf<'a>,
+            T: Decode<'a>,
+        {
+        }
+
+        /// Writer of an array.
+        #[derive(Debug)]
+        pub struct $w<B, T>
+        where
+            B: BufMut,
+        {
+            buf: B,
+            chunk: Option<B::Chunk>,
+            count: $n,
+            _ghost: PhantomData<T>,
+        }
+
+        impl<B, T> $w<B, T>
+        where
+            B: BufMut,
+        {
+            /// Creates a new writer.
+            pub fn new(mut buf: B) -> Result<Self, Error> {
+                let chunk = buf
+                    .reserve_chunk(size_of::<$n>())
+                    .ok_or(Error::UnexpectedEOF)?;
+                Ok(Self {
+                    buf,
+                    chunk: Some(chunk),
+                    count: 0,
+                    _ghost: PhantomData,
+                })
+            }
+        }
+
+        impl<B, T> $w<B, T>
+        where
+            B: BufMut,
+            T: Encode,
+        {
+            /// Writes a new entry.
+            pub fn push(&mut self, entry: &T) -> Result<(), Error> {
+                self.buf.write(entry)?;
+                self.count += 1;
+                Ok(())
+            }
+        }
+
+        impl<B, T> $w<B, T>
+        where
+            B: BufMut,
+        {
+            /// Finishes writing the array.
+            #[allow(clippy::missing_panics_doc)]
+            pub fn finish(mut self) -> Result<(), Error> {
+                let chunk = self.chunk.take().unwrap();
+                self.buf.write_chunk(chunk, |mut b| b.write(self.count))
+            }
+        }
+
+        impl<B, T> Drop for $w<B, T>
+        where
+            B: BufMut,
+        {
+            fn drop(&mut self) {
+                if let Some(chunk) = self.chunk.take() {
+                    let _ = self.buf.write_chunk(chunk, |mut b| b.write(self.count));
+                }
+            }
+        }
+    };
 }
+
+array_rw!(ArrayReaderU8, ArrayWriterU8 => u8);
+array_rw!(ArrayReaderU16, ArrayWriterU16 => u16);
+
+/// Shorthand for [`ArrayReaderU16`].
+pub type ArrayReader<'a, B, T> = ArrayReaderU16<'a, B, T>;
+/// Shorthand for [`ArrayWriterU16`].
+pub type ArrayWriter<B, T> = ArrayWriterU16<B, T>;
 
 /// Name of `Exceptions` attribute. See [`ExceptionsReader`] and [`ExceptionsWriter`] for usage.
 pub const NAME_EXCEPTIONS: &str = "Exceptions";
@@ -743,14 +755,14 @@ pub use need_alloc::*;
 
 #[cfg(feature = "alloc")]
 mod need_alloc {
-    use core::num::NonZero;
+    use core::{num::NonZero, ops::Range};
 
     use alloc::{borrow::Cow, vec::Vec};
     use arrayvec::ArrayVec;
 
     use crate::{
         Error,
-        attributes::{ArrayReader, ArrayWriter},
+        attributes::{ArrayReader, ArrayReaderU8, ArrayWriter, ArrayWriterU8},
         util::{Decode, Encode},
     };
 
@@ -1000,7 +1012,7 @@ mod need_alloc {
     }
 
     /// A single runtime visible annotation on a declaration.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct Annotation<'a> {
         /// The field descriptor (`Utf8`) index in constant pool.
         pub type_idx: NonZero<u16>,
@@ -1010,8 +1022,167 @@ mod need_alloc {
         pub pairs: Cow<'a, [(NonZero<u16>, ElementValue<'a>)]>,
     }
 
+    /// A single runtime visible annotation on a type used in a declaration or expression.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct TypedAnnotation<'a> {
+        /// Which type in a declaration or expression is annotated.
+        pub target: AnnotationTarget<'a>,
+        /// Which part of the type is annotated.
+        pub type_path: Cow<'a, [TypePathEntry]>,
+        /// The field descriptor (`Utf8`) index in constant pool.
+        pub type_idx: NonZero<u16>,
+        /// Element-value pairs in the annotation represented by this annotation structure.
+        ///
+        /// The index is for the name of element of that value (`Utf8`) in constant pool.
+        pub pairs: Cow<'a, [(NonZero<u16>, ElementValue<'a>)]>,
+    }
+
+    /// Specifies precisely which type in a declaration or expression is annotated.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub enum AnnotationTarget<'a> {
+        /// An annotation appears on the declaration of the `i`'th type parameter of a generic class,
+        /// generic interface, generic method, or generic constructor.
+        TypeParameter(TypeParameterKind, u8),
+        /// An annotation appears on a type in the `extends` or `implements` clause of
+        /// a class or interface declaration.
+        ///
+        /// `None` specifies that the annotation appears on the superclass in an
+        /// `extends` clause of a class declaration.
+        SuperType(Option<u16>),
+        /// An annotation appears on the `i`'th bound of the `j`'th type parameter declaration of
+        /// a generic class, interface, method, or constructor.
+        TypeParameterBound {
+            /// Kind of target.
+            kind: TypeParameterKind,
+            /// Which type parameter declaration has an annotated bound.
+            type_param_idx: u8,
+            /// Which bound of the type parameter declaration indicated by `type_parameter_idx` is annotated.
+            bound_idx: u8,
+        },
+        /// An annotation appears on either the type in a:
+        ///
+        /// - Field declaration
+        /// - Type in a record component declaration
+        /// - Return type of a method
+        /// - Type of a newly constructed object
+        /// - Receiver type of a method or constructor.
+        Empty(EmptyAnnotationKind),
+        /// An annotation appears on the type in a formal parameter declaration of a method,
+        /// constructor, or lambda expression.
+        FormalParameter(u8),
+        /// An annotation appears on the `i`'th type in the throws clause of a method
+        /// or constructor declaration.
+        Throws(u16),
+        /// An annotation appears on the type in a local variable declaration,
+        /// including a variable declared as a resource in a `try`-with-resources statement.
+        LocalVar(LocalVarKind, Cow<'a, [LocalVarTableEntry]>),
+        /// An annotation appears on the `i`'th type in an exception parameter declaration.
+        Catch(u16),
+        /// An annotation appears on either the type in an `instanceof` expression or a new expression,
+        /// or the type before the `::` in a method reference expression.
+        Offset(OffsetAnnotationKind, u16),
+        /// An annotation appears either on the `i`'th type in a cast expression, or on the `i`'th type argument
+        /// in the explicit type argument list for any of the following:
+        ///
+        /// - New expression
+        /// - Explicit constructor invocation statement
+        /// - Method invocation expression
+        /// - Method reference expression.
+        TypeArgument {
+            /// Kind of target.
+            kind: TypeArgumentKind,
+            /// The `code` array offset.
+            offset: u16,
+            /// Which type argument is annotated.
+            type_arg_idx: u8,
+        },
+    }
+
+    /// Kind of [`AnnotationTarget::TypeParameter`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum TypeParameterKind {
+        /// Type parameter declaration of generic class or interface.
+        Class,
+        /// Type parameter declaration of generic method or constructor.
+        Method,
+    }
+
+    /// Kind of [`AnnotationTarget::Empty`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum EmptyAnnotationKind {
+        /// Type in field or record component declaration.
+        Field,
+        /// Return type of method, or type of newly constructed object.
+        Return,
+        /// Receiver type of method or constructor.
+        Receiver,
+    }
+
+    /// Kind of [`AnnotationTarget::LocalVar`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum LocalVarKind {
+        /// Type in local variable declaration.
+        Local,
+        /// Type in resource variable declaration.
+        Resource,
+    }
+
+    /// Kind of [`AnnotationTarget::Offset`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum OffsetAnnotationKind {
+        /// Type in `instanceof` expression.
+        InstanceOf,
+        /// Type in `new` expression.
+        New,
+        /// Type in method reference expression using `::new`.
+        MethodRefNew,
+        /// Type in method reference expression using `::Identifier`.
+        MethodRefIdent,
+    }
+
+    /// Kind of [`AnnotationTarget::TypeArgument`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum TypeArgumentKind {
+        /// Type in *cast* expression.
+        Cast,
+        /// Type argument for generic constructor in `new` expression or
+        /// explicit constructor invocation statement.
+        New,
+        /// Type argument for generic method in method invocation expression.
+        MethodInvocation,
+        /// Type argument for generic constructor in method reference expression using `::new`.
+        MethodRefNew,
+        /// Type argument for generic constructor in method reference expression using `::Identifier`.
+        MethodRefIdent,
+    }
+
+    /// Specifies a local variable whose type is annotated.
+    #[derive(Debug, PartialEq, Eq, Clone, Hash)]
+    pub struct LocalVarTableEntry {
+        /// The interval where the given local variable has a value at indices in the `code` array.
+        pub indices: Range<u16>,
+        /// Index into the local variable array of the current frame.
+        /// The given local variable is at `index` in the local variable array of the current frame.
+        ///
+        /// If the given local variable is of type `double` or `long`, it occupies both `index` and `index + 1`.
+        pub index: u16,
+    }
+
+    /// Entry of `type_path` in a [`TypedAnnotation`].
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum TypePathEntry {
+        /// Annotation is deeper in an array type.
+        Array,
+        /// Annotation is deeper in a nested type.
+        Nested,
+        /// Annotation is on the bound of a wildcard type argument of a parameterized type.
+        Wildcard,
+        /// Annotation is on a type argument of a parameterized type.
+        Argument(u8),
+    }
+
     /// Value of an element-value pair.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub enum ElementValue<'a> {
         /// A constant of either a primitive type or the type `String`.
         Const {
@@ -1065,7 +1236,7 @@ mod need_alloc {
             let len: u16 = buf.read()?;
             let mut pairs = Vec::with_capacity(len as usize);
             for _ in 0..len {
-                pairs.push((buf.read()?, buf.read()?));
+                pairs.push(buf.read()?);
             }
             Ok(Self {
                 type_idx,
@@ -1078,9 +1249,8 @@ mod need_alloc {
         fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
             buf.write(self.type_idx)?;
             buf.write(self.pairs.len() as u16)?;
-            for (name_idx, val) in &*self.pairs {
-                buf.write(name_idx)?;
-                buf.write(val)?;
+            for pair in &*self.pairs {
+                buf.write(pair)?;
             }
             Ok(())
         }
@@ -1171,4 +1341,323 @@ mod need_alloc {
             Ok(())
         }
     }
+
+    impl<'de> Decode<'de> for LocalVarTableEntry {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let start: u16 = buf.read()?;
+            let len: u16 = buf.read()?;
+            Ok(Self {
+                indices: start..start + len,
+                index: buf.read()?,
+            })
+        }
+    }
+
+    impl Encode for LocalVarTableEntry {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.indices.start)?;
+            buf.write(self.indices.end - self.indices.start)?;
+            buf.write(self.index)?;
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for TypePathEntry {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let tag: u8 = buf.read()?;
+            let idx = buf.read()?;
+            match tag {
+                0 => Ok(Self::Array),
+                1 => Ok(Self::Nested),
+                2 => Ok(Self::Wildcard),
+                3 => Ok(Self::Argument(idx)),
+                myth => Err(Error::UnknownTypePathKind(myth)),
+            }
+        }
+    }
+
+    impl Encode for TypePathEntry {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            let mut idx = 0;
+            match self {
+                TypePathEntry::Array => buf.write(0u8)?,
+                TypePathEntry::Nested => buf.write(1u8)?,
+                TypePathEntry::Wildcard => buf.write(2u8)?,
+                TypePathEntry::Argument(i) => {
+                    buf.write(3u8)?;
+                    idx = *i
+                }
+            }
+            buf.write(idx)?;
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for AnnotationTarget<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let tag: u8 = buf.read()?;
+            match tag {
+                0x00 | 0x01 => Ok(Self::TypeParameter(
+                    match tag {
+                        0x00 => TypeParameterKind::Class,
+                        0x01 => TypeParameterKind::Method,
+                        _ => unreachable!(),
+                    },
+                    buf.read()?,
+                )),
+                0x10 => {
+                    let idx: u16 = buf.read()?;
+                    Ok(Self::SuperType(Some(idx).filter(|i| *i != u16::MAX)))
+                }
+                0x11 | 0x12 => Ok(Self::TypeParameterBound {
+                    kind: match tag {
+                        0x11 => TypeParameterKind::Class,
+                        0x12 => TypeParameterKind::Method,
+                        _ => unreachable!(),
+                    },
+                    type_param_idx: buf.read()?,
+                    bound_idx: buf.read()?,
+                }),
+                0x13..=0x15 => Ok(Self::Empty(match tag {
+                    0x13 => EmptyAnnotationKind::Field,
+                    0x14 => EmptyAnnotationKind::Return,
+                    0x15 => EmptyAnnotationKind::Receiver,
+                    _ => unreachable!(),
+                })),
+                0x16 => Ok(Self::FormalParameter(buf.read()?)),
+                0x17 => Ok(Self::Throws(buf.read()?)),
+                0x40 | 0x41 => {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Ok(Self::LocalVar(
+                        match tag {
+                            0x40 => LocalVarKind::Local,
+                            0x41 => LocalVarKind::Resource,
+                            _ => unreachable!(),
+                        },
+                        Cow::Owned(vec),
+                    ))
+                }
+                0x42 => Ok(Self::Catch(buf.read()?)),
+                0x43..=0x46 => Ok(Self::Offset(
+                    match tag {
+                        0x43 => OffsetAnnotationKind::InstanceOf,
+                        0x44 => OffsetAnnotationKind::New,
+                        0x45 => OffsetAnnotationKind::MethodRefNew,
+                        0x46 => OffsetAnnotationKind::MethodRefIdent,
+                        _ => unreachable!(),
+                    },
+                    buf.read()?,
+                )),
+                0x47..=0x4B => Ok(Self::TypeArgument {
+                    kind: match tag {
+                        0x47 => TypeArgumentKind::Cast,
+                        0x48 => TypeArgumentKind::New,
+                        0x49 => TypeArgumentKind::MethodInvocation,
+                        0x4A => TypeArgumentKind::MethodRefNew,
+                        0x4B => TypeArgumentKind::MethodRefIdent,
+                        _ => unreachable!(),
+                    },
+                    offset: buf.read()?,
+                    type_arg_idx: buf.read()?,
+                }),
+                myth => Err(Error::UnknownAnnotationTargetType(myth)),
+            }
+        }
+    }
+
+    impl Encode for AnnotationTarget<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            match self {
+                AnnotationTarget::TypeParameter(kind, idx) => {
+                    let tag: u8 = match kind {
+                        TypeParameterKind::Class => 0x00,
+                        TypeParameterKind::Method => 0x01,
+                    };
+                    buf.write(tag)?;
+                    buf.write(idx)?;
+                }
+                AnnotationTarget::SuperType(idx) => {
+                    buf.write(0x10u8)?;
+                    buf.write(idx.unwrap_or(u16::MAX))?;
+                }
+                AnnotationTarget::TypeParameterBound {
+                    kind,
+                    type_param_idx,
+                    bound_idx,
+                } => {
+                    let tag: u8 = match kind {
+                        TypeParameterKind::Class => 0x11,
+                        TypeParameterKind::Method => 0x12,
+                    };
+                    buf.write(tag)?;
+                    buf.write(type_param_idx)?;
+                    buf.write(bound_idx)?;
+                }
+                AnnotationTarget::Empty(kind) => {
+                    let tag: u8 = match kind {
+                        EmptyAnnotationKind::Field => 0x13,
+                        EmptyAnnotationKind::Return => 0x14,
+                        EmptyAnnotationKind::Receiver => 0x15,
+                    };
+                    buf.write(tag)?;
+                }
+                AnnotationTarget::FormalParameter(idx) => {
+                    buf.write(0x16u8)?;
+                    buf.write(idx)?;
+                }
+                AnnotationTarget::Throws(idx) => {
+                    buf.write(0x17u8)?;
+                    buf.write(idx)?;
+                }
+                AnnotationTarget::LocalVar(kind, list) => {
+                    let tag: u8 = match kind {
+                        LocalVarKind::Local => 0x40,
+                        LocalVarKind::Resource => 0x41,
+                    };
+                    buf.write(tag)?;
+                    buf.write(list.len() as u16)?;
+                    for entry in &**list {
+                        buf.write(entry)?;
+                    }
+                }
+                AnnotationTarget::Catch(idx) => {
+                    buf.write(0x42u8)?;
+                    buf.write(idx)?;
+                }
+                AnnotationTarget::Offset(kind, offset) => {
+                    let tag: u8 = match kind {
+                        OffsetAnnotationKind::InstanceOf => 0x43,
+                        OffsetAnnotationKind::New => 0x44,
+                        OffsetAnnotationKind::MethodRefNew => 0x45,
+                        OffsetAnnotationKind::MethodRefIdent => 0x46,
+                    };
+                    buf.write(tag)?;
+                    buf.write(offset)?;
+                }
+                AnnotationTarget::TypeArgument {
+                    kind,
+                    offset,
+                    type_arg_idx,
+                } => {
+                    let tag: u8 = match kind {
+                        TypeArgumentKind::Cast => 0x47,
+                        TypeArgumentKind::New => 0x48,
+                        TypeArgumentKind::MethodInvocation => 0x49,
+                        TypeArgumentKind::MethodRefNew => 0x4A,
+                        TypeArgumentKind::MethodRefIdent => 0x4B,
+                    };
+                    buf.write(tag)?;
+                    buf.write(offset)?;
+                    buf.write(type_arg_idx)?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for TypedAnnotation<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                target: buf.read()?,
+                type_path: {
+                    let len: u8 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?)
+                    }
+                    Cow::Owned(vec)
+                },
+                type_idx: buf.read()?,
+                pairs: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?)
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for TypedAnnotation<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(&self.target)?;
+            buf.write(self.type_path.len() as u8)?;
+            for entry in &*self.type_path {
+                buf.write(entry)?;
+            }
+            buf.write(self.type_idx)?;
+            buf.write(self.pairs.len() as u16)?;
+            for entry in &*self.pairs {
+                buf.write(entry)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Name of `RuntimeInvisibleAnnotations` attribute. See [`RuntimeInvisibleAnnotationsReader`] and [`RuntimeInvisibleAnnotationsWriter`] for usage.
+    pub const NAME_RUNTIME_INVISIBLE_ANNOTATIONS: &str = "RuntimeInvisibleAnnotations";
+    /// Reader of `RuntimeInvisibleAnnotations` attribute.
+    pub type RuntimeInvisibleAnnotationsReader<'env, 'a, B> = ArrayReader<'a, B, Annotation<'env>>;
+    /// Writer of `RuntimeInvisibleAnnotations` attribute.
+    pub type RuntimeInvisibleAnnotationsWriter<'env, B> = ArrayWriter<B, Annotation<'env>>;
+
+    /// All of the runtime visible annotations on the declaration of a single formal parameter.
+    #[derive(Debug)]
+    pub struct ParamAnnotations<'a>(pub Cow<'a, [Annotation<'a>]>);
+
+    impl<'de> Decode<'de> for ParamAnnotations<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let len: u16 = buf.read()?;
+            let mut vec = Vec::with_capacity(len as usize);
+            for _ in 0..len {
+                vec.push(buf.read()?);
+            }
+            Ok(Self(Cow::Owned(vec)))
+        }
+    }
+
+    impl Encode for ParamAnnotations<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.0.len() as u16)?;
+            for val in &*self.0 {
+                buf.write(val)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Name of `RuntimeVisibleParameterAnnotations` attribute.
+    /// See [`RuntimeVisibleParameterAnnotationsReader`] and [`RuntimeVisibleParameterAnnotationsWriter`] for usage.
+    pub const NAME_RUNTIME_VISIBLE_PARAM_ANNOTATIONS: &str = "RuntimeVisibleParameterAnnotations";
+    /// Reader of `RuntimeVisibleParameterAnnotations` attribute.
+    pub type RuntimeVisibleParamAnnotationsReader<'env, 'a, B> =
+        ArrayReaderU8<'a, B, ParamAnnotations<'env>>;
+    /// Writer of `RuntimeVisibleParameterAnnotations` attribute.
+    pub type RuntimeVisibleParamAnnotationsWriter<'env, B> =
+        ArrayWriterU8<B, ParamAnnotations<'env>>;
+
+    /// Name of `RuntimeInvisibleParameterAnnotations` attribute.
+    /// See [`RuntimeInvisibleParameterAnnotationsReader`] and [`RuntimeInvisibleParameterAnnotationsWriter`] for usage.
+    pub const NAME_RUNTIME_INVISIBLE_PARAM_ANNOTATIONS: &str =
+        "RuntimeInvisibleParameterAnnotations";
+    /// Reader of `RuntimeInvisibleParameterAnnotations` attribute.
+    pub type RuntimeInvisibleParamAnnotationsReader<'env, 'a, B> =
+        ArrayReaderU8<'a, B, ParamAnnotations<'env>>;
+    /// Writer of `RuntimeInvisibleParameterAnnotations` attribute.
+    pub type RuntimeInvisibleParamAnnotationsWriter<'env, B> =
+        ArrayWriterU8<B, ParamAnnotations<'env>>;
+
+    /// Name of `RuntimeVisibleTypeAnnotations` attribute.
+    pub const NAME_RUNTIME_VISIBLE_TYPE_ANNOTATIONS: &str = "RuntimeVisibleTypeAnnotations";
+    /// Reader of `RuntimeVisibleTypeAnnotations` attribute.
+    pub type RuntimeVisibleTypeAnnotationsReader<'env, 'a, B> =
+        ArrayReader<'a, B, TypedAnnotation<'env>>;
+    /// Writer of `RuntimeVisibleTypeAnnotations` attribute.
+    pub type RuntimeVisibleTypeAnnotationsWriter<'env, B> = ArrayWriter<B, TypedAnnotation<'env>>;
 }
