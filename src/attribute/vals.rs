@@ -7,17 +7,19 @@ use crate::{
     writer,
 };
 
+use bitflags::bitflags;
+
 macro_rules! simple_rw {
     () => {
         /// Writes this attribute into given buffer.
         #[inline]
-        pub fn write<B: BufMut>(&self, mut buf: B) -> Result<(), Error> {
+        pub fn write<B: crate::BufMut>(&self, mut buf: B) -> Result<(), Error> {
             buf.write(self)
         }
 
         /// Reads the attribute from given buffer.
         #[inline]
-        pub fn read<'a, B: Buf<'a>>(mut buf: B) -> Result<Self, Error> {
+        pub fn read<'a, B: crate::Buf<'a>>(mut buf: B) -> Result<Self, Error> {
             buf.read()
         }
     };
@@ -749,7 +751,96 @@ impl Encode for TypedLocalVariable {
 /// Name of `Deprecated` attribute. This attribute has no info.
 pub const NAME_DEPRECATED: &str = "Deprecated";
 
-use bitflags::bitflags;
+/// Formal parameter of a method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MethodParam {
+    /// Name of this parameter in constant pool (`Utf8`), if present.
+    pub name_idx: Option<NonZero<u16>>,
+    /// Access properties of a method parameter.
+    pub access_flags: MethodParamAccessFlags,
+}
+
+bitflags! {
+    /// Denote access properties of a method parameter.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct MethodParamAccessFlags: u16 {
+        /// Indicates that the formal parameter was declared `final`.
+        const FINAL = 0x0010;
+        /// Indicates that the formal parameter was not explicitly or implicitly declared in source code,
+        /// according to the specification of the language in which the source code was written.
+        const SYNTHETIC = 0x1000;
+        /// Indicates that the formal parameter was implicitly declared in source code,
+        /// according to the specification of the language in which the source code was written.
+        const MANDATED = 0x8000;
+    }
+}
+
+impl<'de> Decode<'de> for MethodParamAccessFlags {
+    fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+        let bits = buf.read()?;
+        Ok(Self::from_bits_retain(bits))
+    }
+}
+
+impl Encode for MethodParamAccessFlags {
+    fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+        buf.write(self.bits())
+    }
+}
+
+impl<'de> Decode<'de> for MethodParam {
+    fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+        Ok(Self {
+            name_idx: buf.read()?,
+            access_flags: buf.read()?,
+        })
+    }
+}
+
+impl Encode for MethodParam {
+    fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+        buf.write(self.name_idx)?;
+        buf.write(self.access_flags)?;
+        Ok(())
+    }
+}
+
+/// Name of `MethodParameters` attribute. See [`MethodParamsReader`] and [`MethodParamsWriter`] for usage.
+pub const NAME_METHOD_PARAMS: &str = "MethodParameters";
+/// Reader of `MethodParameters` attribute.
+pub type MethodParamsReader<'a, B> = ArrayReaderU8<'a, B, MethodParam>;
+/// Writer of `MethodParameters` attribute.
+pub type MethodParamsWriter<B> = ArrayWriterU8<B, MethodParam>;
+
+/// Name of `ModulePackages` attribute.
+/// See [`ModulePackagesReader`] and [`ModulePackagesWriter`] for usage.
+pub const NAME_MODULE_PACKAGES: &str = "ModulePackages";
+/// Reader of `ModulePackages` attribute.
+pub type ModulePackagesReader<'a, B> = ArrayReader<'a, B, NonZero<u16>>;
+/// Writer of `ModulePackages` attribute.
+pub type ModulePackagesWriter<B> = ArrayWriter<B, NonZero<u16>>;
+
+/// Name of `ModuleMainClass` attribute. Use [`ConstantPoolIndex`] for its index (`Class`).
+pub const NAME_MODULE_MAIN_CLASS: &str = "ModuleMainClass";
+/// Name of `NestHost` attribute. Use [`ConstantPoolIndex`] for its index (`Class`).
+pub const NAME_NEST_HOST: &str = "NestHost";
+
+/// Name of `NestMembers` attribute.
+/// See [`NestMembersReader`] and [`NestMembersWriter`] for usage.
+pub const NAME_NEST_MEMBERS: &str = "NestMembers";
+/// Reader of `NestMembers` attribute.
+pub type NestMembersReader<'a, B> = ArrayReader<'a, B, NonZero<u16>>;
+/// Writer of `NestMembers` attribute.
+pub type NestMembersWriter<B> = ArrayWriter<B, NonZero<u16>>;
+
+/// Name of `PermittedSubclasses` attribute.
+/// See [`PermittedSubclassesReader`] and [`PermittedSubclassesWriter`] for usage.
+pub const NAME_PERMITTED_SUBCLASSES: &str = "PermittedSubclasses";
+/// Reader of `PermittedSubclasses` attribute.
+pub type PermittedSubclassesReader<'a, B> = ArrayReader<'a, B, NonZero<u16>>;
+/// Writer of `PermittedSubclasses` attribute.
+pub type PermittedSubclassesWriter<B> = ArrayWriter<B, NonZero<u16>>;
+
 #[cfg(feature = "alloc")]
 pub use need_alloc::*;
 
@@ -759,16 +850,16 @@ mod need_alloc {
 
     use alloc::{borrow::Cow, vec::Vec};
     use arrayvec::ArrayVec;
+    use bitflags::bitflags;
 
     use crate::{
-        Error,
+        Attribute, Error,
         attributes::{ArrayReader, ArrayReaderU8, ArrayWriter, ArrayWriterU8},
         util::{Decode, Encode},
     };
 
     /// Name of `StackMapTable` attribute. See [`StackMapTableReader`] and [`StackMapTableWriter`] for usage.
     pub const NAME_STACK_MAP_TABLE: &str = "StackMapTable";
-
     /// Reader of `StackMapTable` attribute.
     pub type StackMapTableReader<'env, 'a, B> = ArrayReader<'a, B, StackMapFrame<'env>>;
     /// Writer of `StackMapTable` attribute.
@@ -1256,6 +1347,10 @@ mod need_alloc {
         }
     }
 
+    impl ElementValue<'_> {
+        simple_rw! {}
+    }
+
     impl<'de> Decode<'de> for ElementValue<'_> {
         fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
             let tag: u8 = buf.read()?;
@@ -1633,7 +1728,7 @@ mod need_alloc {
     }
 
     /// Name of `RuntimeVisibleParameterAnnotations` attribute.
-    /// See [`RuntimeVisibleParameterAnnotationsReader`] and [`RuntimeVisibleParameterAnnotationsWriter`] for usage.
+    /// See [`RuntimeVisibleParamAnnotationsReader`] and [`RuntimeVisibleParamAnnotationsWriter`] for usage.
     pub const NAME_RUNTIME_VISIBLE_PARAM_ANNOTATIONS: &str = "RuntimeVisibleParameterAnnotations";
     /// Reader of `RuntimeVisibleParameterAnnotations` attribute.
     pub type RuntimeVisibleParamAnnotationsReader<'env, 'a, B> =
@@ -1643,7 +1738,7 @@ mod need_alloc {
         ArrayWriterU8<B, ParamAnnotations<'env>>;
 
     /// Name of `RuntimeInvisibleParameterAnnotations` attribute.
-    /// See [`RuntimeInvisibleParameterAnnotationsReader`] and [`RuntimeInvisibleParameterAnnotationsWriter`] for usage.
+    /// See [`RuntimeInvisibleParamAnnotationsReader`] and [`RuntimeInvisibleParamAnnotationsWriter`] for usage.
     pub const NAME_RUNTIME_INVISIBLE_PARAM_ANNOTATIONS: &str =
         "RuntimeInvisibleParameterAnnotations";
     /// Reader of `RuntimeInvisibleParameterAnnotations` attribute.
@@ -1654,10 +1749,411 @@ mod need_alloc {
         ArrayWriterU8<B, ParamAnnotations<'env>>;
 
     /// Name of `RuntimeVisibleTypeAnnotations` attribute.
+    /// See [`RuntimeVisibleTypeAnnotationsReader`] and [`RuntimeVisibleTypeAnnotationsWriter`] for usage.
     pub const NAME_RUNTIME_VISIBLE_TYPE_ANNOTATIONS: &str = "RuntimeVisibleTypeAnnotations";
     /// Reader of `RuntimeVisibleTypeAnnotations` attribute.
     pub type RuntimeVisibleTypeAnnotationsReader<'env, 'a, B> =
         ArrayReader<'a, B, TypedAnnotation<'env>>;
     /// Writer of `RuntimeVisibleTypeAnnotations` attribute.
     pub type RuntimeVisibleTypeAnnotationsWriter<'env, B> = ArrayWriter<B, TypedAnnotation<'env>>;
+
+    /// Name of `RuntimeInvisibleTypeAnnotations` attribute.
+    /// See [`RuntimeInvisibleTypeAnnotationsReader`] and [`RuntimeInvisibleTypeAnnotationsWriter`] for usage.
+    pub const NAME_RUNTIME_INVISIBLE_TYPE_ANNOTATIONS: &str = "RuntimeInvisibleTypeAnnotations";
+    /// Reader of `RuntimeInvisibleTypeAnnotations` attribute.
+    pub type RuntimeInvisibleTypeAnnotationsReader<'env, 'a, B> =
+        ArrayReader<'a, B, TypedAnnotation<'env>>;
+    /// Writer of `RuntimeInvisibleTypeAnnotations` attribute.
+    pub type RuntimeInvisibleTypeAnnotationsWriter<'env, B> = ArrayWriter<B, TypedAnnotation<'env>>;
+
+    /// Name of `AnnotationDefault` attribute. It's represented by [`ElementValue`].
+    pub const NAME_ANNOTATION_DEFAULT: &str = "AnnotationDefault";
+
+    /// A bootstrap method entry in `BootstrapMethods`.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct BootstrapMethod<'a> {
+        /// Index to `MethodHandle` in constant pool.
+        pub method_ref: NonZero<u16>,
+        /// Indexes to *static arguments* for the bootstrap method in the constant pool.
+        pub args: Cow<'a, [NonZero<u16>]>,
+    }
+
+    impl<'de> Decode<'de> for BootstrapMethod<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                method_ref: buf.read()?,
+                args: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for BootstrapMethod<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.method_ref)?;
+            buf.write(self.args.len() as u16)?;
+            for entry in &*self.args {
+                buf.write(entry)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Name of `BootstrapMethods` attribute.
+    /// See [`BootstrapMethodsReader`] and [`BootstrapMethodsWriter`] for usage.
+    pub const NAME_BOOTSTRAP_METHODS: &str = "BootstrapMethods";
+    /// Reader of `BootstrapMethods` attribute.
+    pub type BootstrapMethodsReader<'env, 'a, B> = ArrayReader<'a, B, BootstrapMethod<'env>>;
+    /// Writer of `BootstrapMethods` attribute.
+    pub type BootstrapMethodsWriter<'env, B> = ArrayWriter<B, BootstrapMethod<'env>>;
+
+    /// Name of [`Module`] attribute.
+    pub const NAME_MODULE: &str = "Module";
+
+    /// Information about a module, consists of following properties:
+    ///
+    /// - The modules required by a module
+    /// - The packages exported and opened by a module
+    /// - The services used and provided by a module.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Module<'a> {
+        /// Name of this module, as index to constant table (`Utf8`).
+        pub name_idx: NonZero<u16>,
+        /// Properties of this module.
+        pub flags: ModuleFlags,
+        /// Version information about the module as index to constant table (`Utf8`), if present.
+        pub version_idx: Option<NonZero<u16>>,
+
+        /// Dependencies of this module.
+        pub requires: Cow<'a, [ModuleRequired]>,
+        /// Packages exported by this module.
+        pub exports: Cow<'a, [PackageRelation<'a>]>,
+        /// Packages opened by this module.
+        pub opens: Cow<'a, [PackageRelation<'a>]>,
+
+        /// `ServiceLoader`s used by this module, by the form of constant pool indices. (`Class`)
+        pub uses: Cow<'a, [NonZero<u16>]>,
+        /// Serivce implementations of interfaces.
+        pub provides: Cow<'a, [ModuleProvided<'a>]>,
+    }
+
+    bitflags! {
+        /// Denote properties of a module.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct ModuleFlags: u16 {
+            /// Indicates that this module is open.
+            const OPEN = 0x0020;
+            /// Indicates that this module was not explicitly or implicitly declared.
+            const SYNTHETIC = 0x1000;
+            /// Indicates that this module was implicitly declared.
+            const MANDATED = 0x8000;
+        }
+    }
+
+    /// A dependency of a module.
+    #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+    pub struct ModuleRequired {
+        /// The depended module, as an index in constant pool (`Module`).
+        pub index: NonZero<u16>,
+        /// Properties of the dependency.
+        pub flags: ModuleRequiredFlags,
+        /// Version information about the module as index to constant table (`Utf8`), if present.
+        pub version_idx: Option<NonZero<u16>>,
+    }
+
+    bitflags! {
+        /// Denote properties of a module dependency.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct ModuleRequiredFlags: u16 {
+            /// Indicates that any module which depends on the current module,
+            /// implicitly declares a dependence on the module indicated by this entry.
+            const TRANSITIVE = 0x0020;
+            /// Indicates that this dependence is mandatory in the static phase.
+            const STATIC_PHASE = 0x0040;
+            /// Indicates that this dependence was not explicitly or implicitly declared
+            /// in the source of the module declaration.
+            const SYNTHETIC = 0x1000;
+            /// Indicates that this dependence was implicitly declared in the source of the module declaration.
+            const MANDATED = 0x8000;
+        }
+    }
+
+    /// Package related to a module.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct PackageRelation<'a> {
+        /// The package index to constant pool. (`Package`)
+        pub index: NonZero<u16>,
+        /// Properties of the package relation.
+        pub flags: PackageFlags,
+        /// The destination module indices to constant pool. (`Module`)
+        pub dst_indices: Cow<'a, [NonZero<u16>]>,
+    }
+
+    bitflags! {
+        /// Denote properties of a module dependency.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct PackageFlags: u16 {
+            /// Indicates that this export was not explicitly or implicitly declared in the source of the module declaration.
+            const STATIC_PHASE = 0x0040;
+            /// Indicates that this package was implicitly declared in the source of the module declaration.
+            const MANDATED = 0x8000;
+        }
+    }
+
+    /// A service implementation for a given service interface in a module.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ModuleProvided<'a> {
+        /// The service interface index to constant pool. (`Class`)
+        pub index: NonZero<u16>,
+        /// The destination service implementation indices to constant pool. (`Class`)
+        pub dst_indices: Cow<'a, [NonZero<u16>]>,
+    }
+
+    impl<'de> Decode<'de> for ModuleFlags {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let bits = buf.read()?;
+            Ok(Self::from_bits_retain(bits))
+        }
+    }
+
+    impl Encode for ModuleFlags {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.bits())
+        }
+    }
+
+    impl<'de> Decode<'de> for ModuleRequiredFlags {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let bits = buf.read()?;
+            Ok(Self::from_bits_retain(bits))
+        }
+    }
+
+    impl Encode for ModuleRequiredFlags {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.bits())
+        }
+    }
+
+    impl<'de> Decode<'de> for ModuleRequired {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                index: buf.read()?,
+                flags: buf.read()?,
+                version_idx: buf.read()?,
+            })
+        }
+    }
+
+    impl Encode for ModuleRequired {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.index)?;
+            buf.write(self.flags)?;
+            buf.write(self.version_idx)?;
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for PackageFlags {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            let bits = buf.read()?;
+            Ok(Self::from_bits_retain(bits))
+        }
+    }
+
+    impl Encode for PackageFlags {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.bits())
+        }
+    }
+
+    impl<'de> Decode<'de> for PackageRelation<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                index: buf.read()?,
+                flags: buf.read()?,
+                dst_indices: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for PackageRelation<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.index)?;
+            buf.write(self.flags)?;
+            buf.write(self.dst_indices.len() as u16)?;
+            for &val in &*self.dst_indices {
+                buf.write(val)?;
+            }
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for ModuleProvided<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                index: buf.read()?,
+                dst_indices: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for ModuleProvided<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.index)?;
+            buf.write(self.dst_indices.len() as u16)?;
+            for &val in &*self.dst_indices {
+                buf.write(val)?;
+            }
+            Ok(())
+        }
+    }
+
+    impl<'de> Decode<'de> for Module<'_> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                name_idx: buf.read()?,
+                flags: buf.read()?,
+                version_idx: buf.read()?,
+                requires: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+                exports: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+                opens: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+                uses: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+                provides: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for Module<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.name_idx)?;
+            buf.write(self.flags)?;
+            buf.write(self.version_idx)?;
+
+            buf.write(self.requires.len() as u16)?;
+            for val in &*self.requires {
+                buf.write(val)?;
+            }
+            buf.write(self.exports.len() as u16)?;
+            for val in &*self.exports {
+                buf.write(val)?;
+            }
+            buf.write(self.opens.len() as u16)?;
+            for val in &*self.opens {
+                buf.write(val)?;
+            }
+            buf.write(self.uses.len() as u16)?;
+            for val in &*self.uses {
+                buf.write(val)?;
+            }
+            buf.write(self.provides.len() as u16)?;
+            for val in &*self.provides {
+                buf.write(val)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// A record component of a class.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ComponentInfo<'a> {
+        /// Index of name in constant pool. (`Utf8`)
+        pub name_idx: NonZero<u16>,
+        /// Index of descriptor in constant pool. (`Utf8`)
+        pub desc_idx: NonZero<u16>,
+        /// Additional attributes.
+        pub attributes: Cow<'a, [Attribute<'a>]>,
+    }
+
+    impl<'de> Decode<'de> for ComponentInfo<'de> {
+        fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
+            Ok(Self {
+                name_idx: buf.read()?,
+                desc_idx: buf.read()?,
+                attributes: {
+                    let len: u16 = buf.read()?;
+                    let mut vec = Vec::with_capacity(len as usize);
+                    for _ in 0..len {
+                        vec.push(buf.read()?);
+                    }
+                    Cow::Owned(vec)
+                },
+            })
+        }
+    }
+
+    impl Encode for ComponentInfo<'_> {
+        fn encode<B: crate::util::BufMut>(&self, mut buf: B) -> Result<(), Error> {
+            buf.write(self.name_idx)?;
+            buf.write(self.desc_idx)?;
+            buf.write(self.attributes.len() as u16)?;
+            for val in &*self.attributes {
+                buf.write(val)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Name of `Record` attribute.
+    /// See [`RecordReader`] and [`RecordWriter`] for usage.
+    pub const NAME_RECORD: &str = "Record";
+    /// Reader of `Record` attribute.
+    pub type RecordReader<'a, B> = ArrayReader<'a, B, ComponentInfo<'a>>;
+    /// Writer of `Record` attribute.
+    pub type RecordWriter<'env, B> = ArrayWriter<B, ComponentInfo<'env>>;
 }
