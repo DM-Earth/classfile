@@ -1695,6 +1695,13 @@ mod need_alloc {
         }
     }
 
+    /// Name of `RuntimeVisibleAnnotations` attribute. See [`RuntimeVisibleAnnotationsReader`] and [`RuntimeVisibleAnnotationsWriter`] for usage.
+    pub const NAME_RUNTIME_VISIBLE_ANNOTATIONS: &str = "RuntimeVisibleAnnotations";
+    /// Reader of `RuntimeVisibleAnnotations` attribute.
+    pub type RuntimeVisibleAnnotationsReader<'env, 'a, B> = ArrayReader<'a, B, Annotation<'env>>;
+    /// Writer of `RuntimeVisibleAnnotations` attribute.
+    pub type RuntimeVisibleAnnotationsWriter<'env, B> = ArrayWriter<B, Annotation<'env>>;
+
     /// Name of `RuntimeInvisibleAnnotations` attribute. See [`RuntimeInvisibleAnnotationsReader`] and [`RuntimeInvisibleAnnotationsWriter`] for usage.
     pub const NAME_RUNTIME_INVISIBLE_ANNOTATIONS: &str = "RuntimeInvisibleAnnotations";
     /// Reader of `RuntimeInvisibleAnnotations` attribute.
