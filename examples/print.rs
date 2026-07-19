@@ -7,7 +7,6 @@ use classfile::Reader;
 extern crate std;
 
 fn main() {
-    // let input = std::fs::read("./Keyframe.class").unwrap();
     let mut input = Vec::new();
     stdin().read_to_end(&mut input).unwrap();
     let reader = Reader::new(&*input);
