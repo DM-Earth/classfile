@@ -587,7 +587,7 @@ impl ConstantPoolIndex {
 impl<'de> Decode<'de> for ConstantPoolIndex {
     #[inline]
     fn decode<B: crate::util::Buf<'de>>(mut buf: B) -> Result<Self, Error> {
-        buf.read()
+        buf.read().map(Self)
     }
 }
 
