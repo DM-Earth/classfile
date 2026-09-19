@@ -90,6 +90,8 @@ impl Display for Error {
     }
 }
 
+impl core::error::Error for Error {}
+
 /// String literal encoded in Modified UTF-8.
 ///
 /// The length of the byte slice should be no longer than [`u16::MAX`].
