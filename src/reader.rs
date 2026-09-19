@@ -141,7 +141,7 @@ where
                 Ok(entry) => entry,
                 Err(err) => return Some(Err(err)),
             };
-            self.phase.read = self.phase.read.saturating_add(1);
+            self.phase.read = self.phase.read.saturating_add(entry.space());
             self.phase.idx = self.phase.idx.saturating_add(entry.space());
             Some(Ok((idx, entry)))
         } else {

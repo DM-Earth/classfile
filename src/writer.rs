@@ -134,7 +134,7 @@ where
     /// Writes a new constant entry.
     pub fn push(&mut self, entry: &ConstantPoolEntry<'_>) -> Result<(), Error> {
         self.buf.write(entry)?;
-        self.phase.count += 1;
+        self.phase.count += entry.space();
         Ok(())
     }
 
