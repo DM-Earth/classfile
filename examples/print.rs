@@ -2,7 +2,7 @@
 
 use std::io::{Read as _, stdin};
 
-use classfile::Reader;
+use java_classfile::Reader;
 
 extern crate std;
 

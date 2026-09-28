@@ -2,7 +2,7 @@
 
 use std::io::{Read as _, Write as _, stdin, stdout};
 
-use classfile::{Reader, Writer};
+use java_classfile::{Reader, Writer};
 
 fn main() {
     let mut input = Vec::new();
