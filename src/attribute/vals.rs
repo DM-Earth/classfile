@@ -28,7 +28,7 @@ macro_rules! simple_rw {
 /// Value of a constant expression.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash)]
 pub struct ConstantValue {
-    /// Index to `Utf8` constant pool for the actual constant value.
+    /// Index to constant pool for the actual constant value.
     pub constant_value_index: NonZero<u16>,
 }
 
@@ -467,7 +467,7 @@ pub struct InnerClass {
     /// Index to constant pool (`Class`) representing the nested class.
     pub inner_info_idx: NonZero<u16>,
     /// Index to constant pool (`Class`) representing the parent class,
-    /// if the inner class is nor a top-level class or interface or a local class
+    /// if the inner class is not a top-level class or interface or a local class
     /// or an anonymous class. Otherwise it should be `None`.
     pub outer_info_idx: Option<NonZero<u16>>,
     /// Index to constant pool (`Utf8`) represents the original simple name of nested class,
@@ -1290,7 +1290,7 @@ mod need_alloc {
             /// The simple name index (`Utf8`) in the constant pool.
             const_name_idx: NonZero<u16>,
         },
-        /// A class literal, denoted by the `Class` index in constant pool.
+        /// A return descriptor, denoted by the `Utf8` index in constant pool.
         Class(NonZero<u16>),
         /// A "nested" annotation.
         Annotation(Annotation<'a>),
@@ -1906,8 +1906,9 @@ mod need_alloc {
         /// Denote properties of a module dependency.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct PackageFlags: u16 {
-            /// Indicates that this export was not explicitly or implicitly declared in the source of the module declaration.
-            const STATIC_PHASE = 0x0040;
+            /// Indicates that this export was not explicitly or implicitly declared
+            /// in the source of the module declaration.
+            const SYNTHETIC = 0x1000;
             /// Indicates that this package was implicitly declared in the source of the module declaration.
             const MANDATED = 0x8000;
         }
@@ -2114,6 +2115,10 @@ mod need_alloc {
             }
             Ok(())
         }
+    }
+
+    impl Module<'_> {
+        simple_rw! {}
     }
 
     /// A record component of a class.

@@ -36,7 +36,7 @@ bitflags! {
         /// Declared `final`; never directly assigned to after object construction.
         const FINAL = 0x0010;
         /// Declared `volatile`; cannot be cached.
-        const VIOLATE = 0x0040;
+        const VOLATILE = 0x0040;
         /// Declared `transient`; not written or read by a persistent object manager.
         const TRANSIENT = 0x0080;
         /// Declared `synthetic`; not present in the source code.
