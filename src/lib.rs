@@ -1,4 +1,4 @@
-//! Java classfile reader and writer.
+//! JVM classfile reader and writer.
 
 #![no_std]
 

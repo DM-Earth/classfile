@@ -1,6 +1,6 @@
 # classfile
 
-Low-level but easy-to-use reader and writer for JVM bytecode.
+Low-level but easy-to-use reader and writer for JVM classfile.
 
 This crate is `no_std` with optional `alloc` dependency required by some attributes.
 
