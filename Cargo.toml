@@ -1,12 +1,12 @@
 [package]
-name = "classfile"
+name = "jclassfile"
 version = "0.1.0"
 edition = "2024"
 authors = ["Jiening Yu <jiening.yu@outlook.com>"]
 description = "JVM classfile reader and writer"
 repository = "https://codeberg.org/DM-Earth/classfile"
 license = "GPL-3.0-or-later"
-keywords = ["jvm", "java", "bytecode", "class"]
+keywords = ["jvm", "java", "bytecode", "class", "classfile"]
 categories = ["parser-implementations", "no-std", "no-std::no-alloc"]
 
 [dependencies]
