@@ -1,5 +1,5 @@
 [package]
-name = "jclassfile"
+name = "java-classfile"
 version = "0.1.0"
 edition = "2024"
 authors = ["Jiening Yu <jiening.yu@outlook.com>"]
