@@ -1,4 +1,38 @@
-//! JVM classfile reader and writer.
+//! Reader and writer for the JVM classfile format.
+//!
+//! Both [`Reader`] and [`Writer`] are stream-based: you walk the classfile
+//! section by section and decide for each item whether to inspect it,
+//! transform it, or pass it through untouched. Structured types such as
+//! [`ClassfileHeader`] and [`ClassMetadata`] are layered on top, so reading
+//! and writing stays ergonomic without buffering the whole classfile.
+//!
+//! # Example
+//!
+//! ```
+//! use classfile::{Error, Reader};
+//!
+//! // A minimal, well-formed classfile header.
+//! let bytes: &[u8] = &[
+//!     0xCA, 0xFE, 0xBA, 0xBE, // magic
+//!     0x00, 0x00, // minor version
+//!     0x00, 0x41, // major version
+//!     0x00, 0x01, // constant_pool_count (no entries)
+//!     0x00, 0x21, // access_flags
+//!     0x00, 0x01, // this_class
+//!     0x00, 0x00, // super_class
+//!     0x00, 0x00, // interfaces_count
+//!     0x00, 0x00, // fields_count
+//!     0x00, 0x00, // methods_count
+//!     0x00, 0x00, // attributes_count
+//! ];
+//!
+//! let (header, reader) = Reader::new(bytes).header()?;
+//! assert_eq!(header.version.major, 0x41);
+//! let reader = reader.finish()?;
+//! let (metadata, _reader) = reader.metadata()?;
+//! assert!(metadata.access_flags.contains(classfile::ClassAccessFlags::SUPER));
+//! # Ok::<(), Error>(())
+//! ```
 
 #![no_std]
 
